@@ -8,17 +8,21 @@ import json
 from unittest import result
 from unittest.signals import registerResult
 
+import logging
+log = logging.getLogger("TestRunner")
 
 class JSONTestResult(result.TestResult):
     """A test result class that can print formatted text results to a stream.
 
     Used by JSONTestRunner.
     """
-    def __init__(self, stream, descriptions, verbosity, results, leaderboard):
+    def __init__(self, stream, descriptions, verbosity, results, leaderboard, debugStream):
         super(JSONTestResult, self).__init__(stream, descriptions, verbosity)
         self.descriptions = descriptions
         self.results = results
         self.leaderboard = leaderboard
+        self.showAll = verbosity > 1
+        self.stream = debugStream
 
     def getDescription(self, test):
         doc_first_line = test.shortDescription()
@@ -47,6 +51,10 @@ class JSONTestResult(result.TestResult):
 
     def startTest(self, test):
         super(JSONTestResult, self).startTest(test)
+        if self.showAll:
+            self.stream.write(self.getDescription(test))
+            self.stream.write(" ... \n")
+            self.stream.flush()
 
     def getOutput(self):
         if self.buffer:
@@ -101,18 +109,26 @@ class JSONTestResult(result.TestResult):
     def addSuccess(self, test):
         super(JSONTestResult, self).addSuccess(test)
         self.processResult(test)
+        if self.showAll:
+            self.stream.write("OK\n")
+            self.stream.flush()
 
     def addError(self, test, err):
         super(JSONTestResult, self).addError(test, err)
         # Prevent output from being printed to stdout on failure
         self._mirrorOutput = False
         self.processResult(test, err)
+        if self.showAll:
+            self.stream.write("ERROR\n")
+            self.stream.flush()
 
     def addFailure(self, test, err):
         super(JSONTestResult, self).addFailure(test, err)
         self._mirrorOutput = False
         self.processResult(test, err)
-
+        if self.showAll:
+            self.stream.write("FAIL\n")
+            self.stream.flush()
 
 class JSONTestRunner(object):
     """A test runner class that displays results in JSON form.
@@ -121,11 +137,12 @@ class JSONTestRunner(object):
 
     def __init__(self, stream=sys.stdout, descriptions=True, verbosity=1,
                  failfast=False, buffer=True, visibility=None,
-                 stdout_visibility=None):
+                 stdout_visibility=None, debugStream=sys.stderr):
         """
         Set buffer to True to include test output in JSON
         """
         self.stream = stream
+        self.debugStream = debugStream
         self.descriptions = descriptions
         self.verbosity = verbosity
         self.failfast = failfast
@@ -140,7 +157,7 @@ class JSONTestRunner(object):
 
     def _makeResult(self):
         return self.resultclass(self.stream, self.descriptions, self.verbosity,
-                                self.json_data["tests"], self.json_data["leaderboard"])
+                                self.json_data["tests"], self.json_data["leaderboard"], self.debugStream)
 
     def run(self, test):
         "Run the given test case or test suite."
